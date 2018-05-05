@@ -116,6 +116,7 @@ func enumerateGithubUsers(client *github.Client, workerChan *chan []int64, wg *s
 }
 
 func getUserKeys(githubClient *githubql.Client, redisClient *redis.Client, workerChan *chan []int64, wg *sync.WaitGroup) {
+	publicKeyRegex := regexp.MustCompile(`[^\s]+\s+([^\s]+).*$`)
 	for userIds := range *workerChan {
 		var query userQuery
 		var nodeIds []string
@@ -128,7 +129,11 @@ func getUserKeys(githubClient *githubql.Client, redisClient *redis.Client, worke
 		queryWithRetries(githubClient, &query, variables)
 		for _, userInfo := range query.Nodes {
 			for _, keyInfo := range userInfo.User.PublicKeys.Edges {
-				redisClient.RPush(string(keyInfo.Node.Key), string(userInfo.User.Login))
+				result := publicKeyRegex.FindStringSubmatch(string(keyInfo.Node.Key))
+				if len(result) < 2 {
+					continue
+				}
+				redisClient.RPush(result[1], string(userInfo.User.Login))
 			}
 		}
 	}
